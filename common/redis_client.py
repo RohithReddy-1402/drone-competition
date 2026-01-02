@@ -31,63 +31,66 @@ class RedisClient:
 
     async def connect(self):
         """Connect to Redis server and setup pub/sub listeners"""
-        try:
-            self.client = aioredis.Redis(
-                host=self.__host,
-                port=self.__port,
-                username=self.__username,
-                password=self.__password,
-                db=0,
-                decode_responses=True,
-                socket_connect_timeout=15,
-                socket_keepalive=True,
-                health_check_interval=30
-            )
-            await self.client.ping()
-            logger.info(f"[RedisClient] Connected to Redis at {self.__host}:{self.__port}")
-        except Exception as e:
-            logger.error(f"[RedisClient] Failed to connect to Redis: {e}")
-            raise
+        while True:
+            try:
+                self.client = aioredis.Redis(
+                    host=self.__host,
+                    port=self.__port,
+                    username=self.__username,
+                    password=self.__password,
+                    db=0,
+                    decode_responses=True,
+                    socket_connect_timeout=15,
+                    socket_keepalive=True,
+                    health_check_interval=30
+                )
+                await self.client.ping()
+                logger.info(f"[RedisClient] Connected to Redis at {self.__host}:{self.__port}")
 
-        # send state
-        await self.client.set(f"state:{self.worker_id}", json.dumps({
-            "status": "running",
-            "timestamp": time.time()
-        }))
+                # send state
+                await self.client.set(f"state:{self.worker_id}", json.dumps({
+                    "status": "running",
+                    "timestamp": time.time()
+                }))
 
-        # setup listeners
-        if self.listeners:
-            pubsub = self.client.pubsub()
-            for channel, callback in self.listeners.items():
-                await pubsub.subscribe(channel)
-                logger.info(f"[RedisClient] Subscribed to channel '{channel}'")
+                if self.listeners:
+                    self.__loop.create_task(self.pubsub_loop())
 
-            async def listener_loop():
-                while True:
-                    try:
-                        async for message in pubsub.listen():
-                            if message['type'] == 'message':
-                                channel = message['channel']
-                                # data = json.loads(message['data'])
-                                data = message['data']
+                return # exit the connect loop on success
+            except Exception as e:
+                logger.error(f"[RedisClient] Failed to connect to Redis: {e}")
+                await asyncio.sleep(2) # wait before retrying
 
-                                try:
-                                    data = json.loads(data)
-                                except json.JSONDecodeError:
-                                    pass
+    async def pubsub_loop(self):
+        while True:
+            try:
+                pubsub = self.client.pubsub()
+                for channel, callback in self.listeners.items():
+                    await pubsub.subscribe(channel)
+                    logger.info(f"[RedisClient] Subscribed to channel '{channel}'")
 
-                                callback = self.listeners.get(channel, None)
-                                if callback:
-                                    logging.debug(f"[RedisClient] Message received on channel '{channel}': {data}")
-                                    try:
-                                        await callback(data)
-                                    except Exception as e:
-                                        logger.error(f"[RedisClient] Error in listener callback for channel '{channel}': {e}")
-                    except Exception as e:
-                        logger.error(f"[RedisClient] Error in listener loop: {e}")
-                        await asyncio.sleep(2)  # wait before retrying
+                async for message in pubsub.listen():
+                    if message['type'] == 'message':
+                        channel = message['channel']
+                        # data = json.loads(message['data'])
+                        data = message['data']
 
-            self.__loop.create_task(listener_loop())
+                        try:
+                            data = json.loads(data)
+                        except json.JSONDecodeError:
+                            pass
+
+                        callback = self.listeners.get(channel, None)
+                        if callback:
+                            logging.debug(f"[RedisClient] Message received on channel '{channel}': {data}")
+                            try:
+                                # await callback(data)
+                                asyncio.create_task(callback(data)) # run in separate task to avoid blocking
+                            except Exception as e:
+                                logger.error(f"[RedisClient] Error in listener callback for channel '{channel}': {e}")
+            except Exception as e:
+                logger.error(f"[RedisClient] Error in listener loop: {e}")
+                await asyncio.sleep(2)  # wait before retrying
 
     async def get_startup_mode(self) -> str:
         """Retrieve the startup mode from Redis"""
