@@ -1,6 +1,5 @@
 terrain/*
 *.bat
-test*
 __pycache__/
 *.pyc
 .vscode/
@@ -8,3 +7,5 @@ __pycache__/
 *.kml
 *.csv
 venv/
+logs
+*.bin

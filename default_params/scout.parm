@@ -89,3 +89,10 @@ MOT_BAT_VOLT_MAX 12.8
 # CIRCLE 		7 !
 # POSITION 		8
 # LAND 			9 !
+
+AVOID_ENABLE = 7
+PRX_TYPE     = 2
+PRX_ORIENT   = 0
+PRX_YAW      = 0
+PRX_MIN      = 0
+PRX_MAX      = 1800
