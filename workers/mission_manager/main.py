@@ -59,7 +59,7 @@ async def handle_start_mission(_):
     mav.arm_and_takeoff("scout", 5) # altitude 5m
 
     await redis.publish(
-        "path_planning:planning_request",
+        "mission_manager:request_next_waypoint",
         {"drone_id": "scout"}
     )
 
@@ -72,7 +72,7 @@ async def handle_arm_takeoff(data):
 
     mav.arm_and_takeoff(drone_id, altitude)
 
-@redis.listen("event:planned_waypoint")
+@redis.listen("path_planning:planned_waypoint")
 async def handle_planned_waypoint(data):
     drone_id = data["drone_id"]
     waypoint = data["waypoint"]
@@ -83,12 +83,13 @@ async def handle_planned_waypoint(data):
 
     logger.info(f"[MissionManager] Executing waypoint for {drone_id}: {waypoint}")
 
-    # mav.send_waypoint(
-    #     drone_id,
-    #     waypoint["x"],
-    #     waypoint["y"],
-    #     waypoint["z"]
-    # )
+    # TODO
+    """
+    For sprayer:
+    - check if drone is landed or in air
+    - if landed, takeoff to a safe altitude (e.g., 5m)
+    - then send waypoint
+    """
 
     mav.send_waypoint_latlon(
         drone_id,
@@ -109,13 +110,13 @@ async def handle_no_safe_path(data):
     mav.halt(drone_id)
     mission_state["halted"][drone_id] = True
 
-@redis.listen("event:occupancy_grid_updated")
+@redis.listen("lidar_processing:occupancy_grid_updated")
 async def handle_grid_update(_):
     # Any grid update invalidates current assumptions
     for drone_id in ["scout", "sprayer"]:
         if not mission_state["halted"][drone_id]:
             await redis.publish(
-                "path_planning:planning_request",
+                "mission_manager:request_next_waypoint",
                 {"drone_id": drone_id}
             )
 
@@ -124,7 +125,7 @@ async def handle_crop_detected(data):
     logger.info(f"[MissionManager] Crop detected → dispatch sprayer")
 
     await redis.publish(
-        "path_planning:planning_request",
+        "mission_manager:request_next_waypoint",
         {
             "drone_id": "sprayer",
             "target": data["location"]
@@ -181,13 +182,13 @@ async def handle_pose_update(data):
         mission_state["active_waypoint"][drone_id] = None
 
         await redis.publish(
-            "path_planning:planning_request",
+            "mission_manager:request_next_waypoint",
             {"drone_id": drone_id, "lat": cur_lat, "lon": cur_lon}
         )
 
     elif drone_id == "sprayer":
         # TODO: check if drone has reached the crop location, if not -> request waypoints from path planner
-        # TODO: once on crop, handle spraying mechanism here
+        # TODO: once on crop, handle spraying mechanism here - define a custom mavlink message -> START_SPRAYING with no arguments -> it triggers the sprayer to start spraying and automatically stops after <preset> seconds
         # TODO: drone goes down to lower altitude to spray, goes back up and requests for new waypoint
         pass 
 

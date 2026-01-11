@@ -65,13 +65,13 @@ def update_grid(x: float, y: float, yaw_deg: float,
 async def publish_grid():
     """Publish occupancy grid to Redis and emit update event"""
     await redis.client.set("occupancy_grid", occupancy_grid.tobytes())
-    await redis.publish("event:occupancy_grid_updated", {"status": "updated", "timestamp": time.time()})
+    await redis.publish("lidar_worker:occupancy_grid_updated", {"status": "updated", "timestamp": time.time()})
     logger.info(f"[{WORKER_ID}] Occupancy grid published")
 
 
 # ---------------- Redis Event Listeners ---------------- #
 
-@redis.listen("event:drone_pose_update")
+@redis.listen("mission_manager:drone_pose_update")
 async def handle_drone_pose_update(data):
     """Update drone pose from Mission Manager"""
     global drone_pose
@@ -81,7 +81,7 @@ async def handle_drone_pose_update(data):
     logger.debug(f"[{WORKER_ID}] Pose updated: {drone_pose}")
 
 
-@redis.listen("event:lidar_obstacle_distance")
+@redis.listen("mission_manager:lidar_obstacle_distance")
 async def handle_obstacle_distance(data):
     """Process OBSTACLE_DISTANCE message from drone"""
     global time_boot_us
@@ -98,11 +98,11 @@ async def handle_obstacle_distance(data):
     await publish_grid()
 
 
-@redis.listen("event:system_time")
+@redis.listen("mission_manager:system_time")
 async def handle_system_time(data):
     """Update time sync"""
     global time_boot_us
-    time_boot_us = data.get("time_boot_us", 0)
+    time_boot_us = data.get("time_unix_usec", 0)
 
 
 # ---------------- Worker Loops ---------------- #

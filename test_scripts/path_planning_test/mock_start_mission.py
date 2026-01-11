@@ -43,7 +43,10 @@ async def main(kml_path: str):
     await redis.connect()
 
     logger.info("Sending KML to path planner...")
-    await redis.publish("event:pathplanner_in", payload)
+    await redis.publish("mission_manager:scout_planning_request", payload)
+
+    # SET INTIAL VARIABLE
+    await redis.client.set("path_planner:current_crop_target_index", "0")
 
     logger.info("Payload published successfully")
 
