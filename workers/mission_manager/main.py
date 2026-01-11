@@ -169,27 +169,27 @@ async def handle_pose_update(data):
         cur_lat = data["lat"]
         cur_lon = data["lon"]
     except KeyError:
-        print("what the fuck")
         print(data)
 
     distance = haversine_distance(cur_lat, cur_lon, wp["lat"], wp["lon"])
 
     logger.info(f"[MissionManager] {drone_id} distance to waypoint: {distance:.2f}m")
 
-    if distance < 1.0:  # 1.0m radius
+    if drone_id == "scout" and distance < 1.0:  # 1.0m radius
         logger.info(f"[MissionManager] {drone_id} reached waypoint")
 
         mission_state["active_waypoint"][drone_id] = None
 
-        if drone_id == "scout":
-            await redis.publish(
-                "path_planning:planning_request",
-                {"drone_id": drone_id, "lat": cur_lat, "lon": cur_lon}
-            )
-        elif drone_id == "sprayer":
-            # TODO: handle spraying mechanism here
-            # TODO: drone goes down to lower altitude to spray, goes back up and requests for new waypoint
-            pass 
+        await redis.publish(
+            "path_planning:planning_request",
+            {"drone_id": drone_id, "lat": cur_lat, "lon": cur_lon}
+        )
+
+    elif drone_id == "sprayer":
+        # TODO: check if drone has reached the crop location, if not -> request waypoints from path planner
+        # TODO: once on crop, handle spraying mechanism here
+        # TODO: drone goes down to lower altitude to spray, goes back up and requests for new waypoint
+        pass 
 
 @redis.listen("system_mode")
 async def handle_system_mode(data):

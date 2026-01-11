@@ -11,9 +11,6 @@ import json
 
 from common.redis_client import RedisClient
 
-# ---------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -21,9 +18,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("path_planner_worker")
 
-# ---------------------------------------------------------------------
-# Async loop + Redis
-# ---------------------------------------------------------------------
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 shutdown_event = asyncio.Event()
@@ -31,9 +25,8 @@ shutdown_event = asyncio.Event()
 WORKER_ID = "path_planner_worker"
 redis = RedisClient(loop=loop, worker_id=WORKER_ID)
 
-# ---------------------------------------------------------------------
-# KML XML → Polygon
-# ---------------------------------------------------------------------
+MARGIN_DISTANCE_M = 2  # meters
+
 def read_kml_polygon_from_xml(kml_xml: str) -> Polygon:
     root = ET.fromstring(kml_xml)
     ns = {"kml": "http://www.opengis.net/kml/2.2"}
@@ -55,9 +48,6 @@ def read_kml_polygon_from_xml(kml_xml: str) -> Polygon:
 
     return Polygon(coords)
 
-# ---------------------------------------------------------------------
-# Lawn-mower path generation
-# ---------------------------------------------------------------------
 def generate_lawnmower(poly: Polygon, spacing_m: float, angle_deg: float):
     to_m = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
     to_ll = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
@@ -229,7 +219,7 @@ async def handle_planning_request(data):
         if lat is not None and lon is not None:
             dist = haversine_distance(lat, lon, pend_lat, pend_lon)
 
-            if dist > 5:
+            if dist > MARGIN_DISTANCE_M:
                 logger.warning(f"[{WORKER_ID}] Drone is {dist:.2f}m away from expected position for waypoint {current_waypoint}. Sending current waypoint.")
                 await redis.publish(
                     "event:planned_waypoint",
@@ -270,9 +260,6 @@ async def main(loop):
 
     await redis.close()
 
-# ---------------------------------------------------------------------
-# Runner
-# ---------------------------------------------------------------------
 def runner():
     try:
         loop.run_until_complete(main(loop))
